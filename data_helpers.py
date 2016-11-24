@@ -2,6 +2,7 @@ import numpy as np
 import re
 import itertools
 import codecs
+import pickle
 from collections import Counter
 
 
@@ -25,20 +26,41 @@ def clean_str(string):
   string = re.sub(r"\s{2,}", " ", string)
   return string.strip().lower()
 
+def vocabulary_dump(filename,vocabulary,vocabulary_inv):
+  filehandler = open(filename, "wb")
+  pickle.dump(vocabulary, filehandler)
+  pickle.dump(vocabulary_inv,filehandler)
+  filehandler.close()
 
-def load_data_and_labels():
+def vocabulary_restore(filename):
+  filehandler = open(filename, "rb")
+  vocabulary = pickle.load(filehandler)
+  vocabulary_inv = pickle.load(filehandler)
+  filehandler.close()
+  return vocabulary,vocabulary_inv
+
+def load_raw_data(data_file):
+  # Load data from files
+  raw_examples = list(codecs.open(data_file, "r", "utf-8").readlines())
+  raw_examples = [s.strip() for s in raw_examples]
+  # Split by words
+  x_text = [list(s) for s in raw_examples]
+
+  return x_text
+
+
+def load_data_and_labels(positive_data_file,negative_data_file):
   """
   Loads MR polarity data from files, splits the data into words and generates labels.
   Returns split sentences and labels.
   """
   # Load data from files
-  positive_examples = list(codecs.open("./data/chinese/pos.txt", "r", "utf-8").readlines())
+  positive_examples = list(codecs.open(positive_data_file, "r", "utf-8").readlines())
   positive_examples = [s.strip() for s in positive_examples]
-  negative_examples = list(codecs.open("./data/chinese/neg.txt", "r", "utf-8").readlines())
+  negative_examples = list(codecs.open(negative_data_file, "r", "utf-8").readlines())
   negative_examples = [s.strip() for s in negative_examples]
   # Split by words
   x_text = positive_examples + negative_examples
-  # x_text = [clean_str(sent) for sent in x_text]
   x_text = [list(s) for s in x_text]
 
   # Generate labels
@@ -85,32 +107,41 @@ def build_input_data(sentences, labels, vocabulary):
   y = np.array(labels)
   return [x, y]
 
+def build_input_dataX(sentences, vocabulary):
+  """
+  Maps sentencs and labels to vectors based on a vocabulary.
+  """
+  x = np.array([[vocabulary[word] for word in sentence] for sentence in sentences])
+  return x
 
-def load_data():
+def load_data(positive_data_file,negative_data_file):
   """
   Loads and preprocessed data for the MR dataset.
   Returns input vectors, labels, vocabulary, and inverse vocabulary.
   """
   # Load and preprocess data
-  sentences, labels = load_data_and_labels()
+  sentences, labels = load_data_and_labels(positive_data_file,negative_data_file)
   sentences_padded = pad_sentences(sentences)
   vocabulary, vocabulary_inv = build_vocab(sentences_padded)
   x, y = build_input_data(sentences_padded, labels, vocabulary)
   return [x, y, vocabulary, vocabulary_inv]
 
 
-def batch_iter(data, batch_size, num_epochs):
-  """
-  Generates a batch iterator for a dataset.
-  """
-  data = np.array(data)
-  data_size = len(data)
-  num_batches_per_epoch = int(len(data)/batch_size) + 1
-  for epoch in range(num_epochs):
-    # Shuffle the data at each epoch
-    shuffle_indices = np.random.permutation(np.arange(data_size))
-    shuffled_data = data[shuffle_indices]
-    for batch_num in range(num_batches_per_epoch):
-      start_index = batch_num * batch_size
-      end_index = min((batch_num + 1) * batch_size, data_size)
-      yield shuffled_data[start_index:end_index]
+def batch_iter(data, batch_size, num_epochs, shuffle=True):
+    """
+    Generates a batch iterator for a dataset.
+    """
+    data = np.array(data)
+    data_size = len(data)
+    num_batches_per_epoch = int(len(data)/batch_size) + 1
+    for epoch in range(num_epochs):
+        # Shuffle the data at each epoch
+        if shuffle:
+            shuffle_indices = np.random.permutation(np.arange(data_size))
+            shuffled_data = data[shuffle_indices]
+        else:
+            shuffled_data = data
+        for batch_num in range(num_batches_per_epoch):
+            start_index = batch_num * batch_size
+            end_index = min((batch_num + 1) * batch_size, data_size)
+            yield shuffled_data[start_index:end_index]
